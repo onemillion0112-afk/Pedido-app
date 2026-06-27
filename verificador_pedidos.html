@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verificador de pedidos - Rios Performance</title>
+<style>
+:root{
+  --bg:#f6f6f3;
+  --card:#ffffff;
+  --border:#e0e0db;
+  --text:#1d1d1b;
+  --text-secondary:#6b6b66;
+  --success-bg:#eaf3de; --success-text:#27500a; --success-border:#639922;
+  --danger-bg:#fcebeb; --danger-text:#791f1f; --danger-border:#e24b4a;
+  --warning-bg:#faeeda; --warning-text:#633806; --warning-border:#ef9f27;
+  --accent:#185fa5;
+}
+*{ box-sizing:border-box; }
+body{
+  max-width:480px; margin:0 auto; padding:16px 16px 48px;
+  font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.45;
+}
+h1{ font-size:18px; font-weight:600; margin:0 0 2px; }
+h2{ font-size:15px; font-weight:600; margin:0 0 10px; }
+p{ margin:0 0 10px; }
+.muted{ color:var(--text-secondary); font-size:13px; }
+input, select{ font-size:14px; padding:9px 10px; border-radius:8px; border:1px solid var(--border); width:100%; background:var(--card); color:var(--text); }
+button{ font-size:14px; padding:10px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; }
+button:active{ transform:scale(0.98); }
+.btn-primary{ background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; width:100%; }
+.btn-secondary{ width:100%; }
+.btn-block{ width:100%; }
+.row-flex{ display:flex; gap:8px; align-items:center; }
+.card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px; }
+.stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
+.stat-box{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px 8px; text-align:center; }
+.stat-box .num{ font-size:20px; font-weight:600; }
+.stat-box .lbl{ font-size:11px; color:var(--text-secondary); }
+.build-row{ display:flex; gap:6px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; background:var(--card); }
+.build-row input{ font-size:13px; padding:7px 8px; }
+.build-row .f-code{ width:108px; font-family:monospace; flex-shrink:0; }
+.build-row .f-name{ flex:1; min-width:0; }
+.build-row .f-qty{ width:50px; text-align:center; flex-shrink:0; }
+.del-btn{ border:none; background:none; color:var(--danger-text); font-size:18px; padding:2px 4px; flex-shrink:0; }
+.pick-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); margin-bottom:6px; }
+.pick-row .code{ font-family:monospace; font-size:11px; color:var(--text-secondary); }
+.pick-row .name{ font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pick-row .left{ min-width:0; flex:1; }
+.pick-row .right{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.pick-row .count{ font-size:14px; font-weight:600; min-width:38px; text-align:right; }
+.minus-btn{ width:28px; height:28px; padding:0; border-radius:6px; }
+#banner{ display:none; padding:12px 14px; border-radius:10px; margin-bottom:14px; font-size:14px; font-weight:600; }
+#feedback-text{ min-height:18px; font-size:13px; margin:8px 0 0; color:var(--text-secondary); }
+#feedback-action button{ font-size:13px; padding:7px 10px; }
+#camera-preview{ width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; margin-bottom:10px; display:none; }
+#photo-status{ font-size:13px; color:var(--text-secondary); margin-top:8px; min-height:16px; }
+.hidden{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <header style="margin-bottom:16px;">
+    <h1>Verificador de pedidos</h1>
+    <p class="muted">Rios Performance - almacén</p>
+    <p class="muted" id="catalog-status" style="margin-top:4px;"></p>
+  </header>
+
+  <section id="screen-build">
+
+    <div class="card">
+      <h2>Referencia del pedido</h2>
+      <input id="order-ref" type="text" placeholder="ej: Cotización 00007736 - Pedro Ushñahua">
+    </div>
+
+    <div class="card">
+      <h2>Cargar la cotización</h2>
+      <p class="muted">Sube el PDF de la cotización (se lee solo, en cualquier lugar) o una foto/captura desde tu galería (la lectura automática de fotos solo funciona dentro de Claude.ai). Revisa siempre el resultado antes de continuar.</p>
+      <input type="file" id="photo-input" accept="image/*,application/pdf" class="hidden">
+      <button id="photo-trigger-btn" class="btn-secondary">Subir cotización (PDF o foto)</button>
+      <p id="photo-status"></p>
+    </div>
+
+    <div class="card">
+      <h2>Agregar producto manualmente</h2>
+      <form id="quick-add-form">
+        <div class="row-flex" style="margin-bottom:8px;">
+          <input id="quick-code" type="text" placeholder="Código" style="flex:1;" required>
+          <input id="quick-qty" type="number" min="1" value="1" style="width:64px;">
+        </div>
+        <input id="quick-name" type="text" placeholder="Nombre del producto (opcional)" style="margin-bottom:8px;">
+        <button type="submit" class="btn-secondary">Agregar línea</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Productos del pedido (<span id="count-build">0</span>)</h2>
+      <div id="build-list"></div>
+    </div>
+
+    <button id="btn-start-verification" class="btn-primary">Iniciar verificación →</button>
+    <p id="build-status" class="muted" style="margin-top:8px;"></p>
+
+  </section>
+
+  <section id="screen-pick" class="hidden">
+
+    <div class="card">
+      <form id="scan-form">
+        <input id="scan-input" type="text" placeholder="Escribe o escanea el código" autocomplete="off" style="margin-bottom:8px;">
+      </form>
+      <button id="camera-toggle-btn" class="btn-secondary" style="margin-bottom:8px;">Escanear con cámara</button>
+      <p id="camera-status" class="muted" style="margin-bottom:8px;"></p>
+      <div id="camera-preview"></div>
+      <div id="feedback-area">
+        <p id="feedback-text">Esperando el primer escaneo.</p>
+        <div id="feedback-action"></div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" id="stat-total">0</div><div class="lbl">Líneas</div></div>
+      <div class="stat-box"><div class="num" id="stat-complete" style="color:var(--success-text);">0</div><div class="lbl">Completas</div></div>
+      <div class="stat-box"><div class="num" id="stat-pending">0</div><div class="lbl">Pendientes</div></div>
+      <div class="stat-box"><div class="num" id="stat-excess" style="color:var(--danger-text);">0</div><div class="lbl">Con exceso</div></div>
+    </div>
+
+    <div id="banner"></div>
+
+    <div id="pick-rows"></div>
+
+    <div class="row-flex" style="margin-top:14px;">
+      <button id="btn-back-to-build" class="btn-secondary" style="flex:1;">← Editar pedido</button>
+      <button id="btn-copy-summary" class="btn-secondary" style="flex:1;">Copiar resumen</button>
+    </div>
+    <p id="summary-status" class="muted" style="margin-top:6px;"></p>
+    <textarea id="summary-fallback" readonly class="hidden" style="width:100%; height:120px; margin-top:6px; font-size:12px; font-family:monospace;"></textarea>
+    <button id="btn-new-order" class="btn-secondary btn-block" style="margin-top:8px;">Nuevo pedido</button>
+
+  </section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script>
+let pickItems = [];
+
+let barcodeCatalog = {};
+try{
+  const storedCatalog = localStorage.getItem('rios_barcode_catalog');
+  if(storedCatalog) barcodeCatalog = JSON.parse(storedCatalog);
+}catch(e){
+  barcodeCatalog = {};
+}
+
+function saveBarcodeCatalog(){
+  try{
+    localStorage.setItem('rios_barcode_catalog', JSON.stringify(barcodeCatalog));
+  }catch(e){
+    // Sin almacenamiento disponible (ej. dentro de Claude.ai): el catálogo
+    // solo dura esta sesión, pero todo lo demás sigue funcionando igual.
+  }
+}
+let html5QrCode = null;
+let cameraActive = false;
+let scanLocked = false;
+
+function escapeAttr(s){
+  return (s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showScreen(name){
+  document.getElementById('screen-build').classList.toggle('hidden', name !== 'build');
+  document.getElementById('screen-pick').classList.toggle('hidden', name !== 'pick');
+}
+
+function renderBuildList(){
+  const html = pickItems.map((item, idx) =>
+    '<div class="build-row">'
+      + '<input class="f-code" data-idx="'+idx+'" data-field="code" value="'+escapeAttr(item.code)+'" placeholder="Código">'
+      + '<input class="f-name" data-idx="'+idx+'" data-field="name" value="'+escapeAttr(item.name)+'" placeholder="Nombre">'
+      + '<input class="f-qty" type="number" min="1" data-idx="'+idx+'" data-field="qty" value="'+item.qty+'">'
+      + '<button class="del-btn" type="button" data-action="delete" data-idx="'+idx+'" aria-label="Quitar">×</button>'
+    + '</div>'
+  ).join('');
+  document.getElementById('build-list').innerHTML = html || '<p class="muted">Todavía no agregaste productos.</p>';
+  document.getElementById('count-build').textContent = pickItems.length;
+}
+
+document.getElementById('build-list').addEventListener('input', function(e){
+  const idx = e.target.getAttribute('data-idx');
+  const field = e.target.getAttribute('data-field');
+  if(idx === null) return;
+  if(field === 'qty') pickItems[idx].qty = Math.max(1, parseInt(e.target.value) || 1);
+  else pickItems[idx][field] = e.target.value;
+});
+
+document.getElementById('build-list').addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-action="delete"]');
+  if(!btn) return;
+  pickItems.splice(parseInt(btn.getAttribute('data-idx')), 1);
+  renderBuildList();
+});
+
+document.getElementById('quick-add-form').addEventListener('submit', function(e){
+  e.preventDefault();
+  const code = document.getElementById('quick-code').value.trim();
+  const name = document.getElementById('quick-name').value.trim();
+  const qty = Math.max(1, parseInt(document.getElementById('quick-qty').value) || 1);
+  if(!code) return;
+  pickItems.push({ code, name, qty, picked:0 });
+  renderBuildList();
+  document.getElementById('quick-code').value = '';
+  document.getElementById('quick-name').value = '';
+  document.getElementById('quick-qty').value = '1';
+  document.getElementById('quick-code').focus();
+});
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function resizeImage(file, maxDim, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if(width > height && width > maxDim){
+        height = Math.round(height * (maxDim / width));
+        width = maxDim;
+      } else if(height >= width && height > maxDim){
+        width = Math.round(width * (maxDim / height));
+        height = maxDim;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        if(!blob) reject(new Error('No se pudo procesar la imagen'));
+        else resolve(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen tomada'));
+    img.src = url;
+  });
+}
+
+if(typeof pdfjsLib !== 'undefined'){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+async function extractPdfLines(file){
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allLines = [];
+  for(let p = 1; p <= pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items = content.items
+      .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5] }))
+      .filter(it => it.text.trim().length > 0);
+    items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+    const lines = [];
+    let current = null;
+    const Y_TOLERANCE = 3;
+    items.forEach(it => {
+      if(current && Math.abs(it.y - current.y) <= Y_TOLERANCE){
+        current.items.push(it);
+      } else {
+        current = { y: it.y, items: [it] };
+        lines.push(current);
+      }
+    });
+    lines.forEach(line => {
+      line.items.sort((a, b) => a.x - b.x);
+      const text = line.items.map(i => i.text).join(' ').replace(/\s+/g, ' ').trim();
+      if(text) allLines.push(text);
+    });
+  }
+  return allLines;
+}
+
+const SKIP_LINE_PATTERN = /CODIGO|ARTICULO|CANT\.|U\.M\.|PRECIO|SUBTOTAL|IGV|^TOTAL|SON:|OBSERVACIONES|COTIZACI|DEVOLUCION|R\.U\.C\.|EMISI[OÓ]N|CLIENTE|VENDEDOR|COND\. VENTA|DIRECCI[OÓ]N|^ITEM$/i;
+
+function popDecimalToken(tokens){
+  if(tokens.length === 0) return null;
+  const last = tokens[tokens.length - 1];
+  if(/^\d+(?:[.,]\d{1,2})?$/.test(last)) return tokens.pop();
+  return null;
+}
+
+function parseLineToItem(line){
+  if(SKIP_LINE_PATTERN.test(line)) return null;
+  const tokens = line.split(/\s+/).filter(Boolean);
+  if(tokens.length < 3) return null;
+  if(!/^\d{1,3}$/.test(tokens[0])) return null;
+  tokens.shift();
+  if(tokens.length < 2) return null;
+
+  const codigo = tokens.shift();
+  if(codigo.length < 3 || !/^[A-Z0-9][A-Z0-9.\-_]+$/i.test(codigo)) return null;
+
+  popDecimalToken(tokens); // precio total (descartado, no lo necesitamos)
+  if(tokens.length && tokens[tokens.length - 1] === '%'){
+    tokens.pop();
+    popDecimalToken(tokens); // dsc
+  } else if(tokens.length && /^\d+(?:[.,]\d{1,2})?%$/.test(tokens[tokens.length - 1])){
+    tokens.pop();
+  }
+  const precioUnitario = popDecimalToken(tokens);
+
+  if(tokens.length && /^[A-ZÁÉÍÓÚÑ]{2,10}$/i.test(tokens[tokens.length - 1])){
+    tokens.pop(); // U.M.
+  }
+
+  let cant = null;
+  if(tokens.length && /^\d{1,4}$/.test(tokens[tokens.length - 1])){
+    cant = tokens.pop();
+  }
+
+  if(!cant || !precioUnitario) return null;
+
+  const name = tokens.join(' ').trim();
+  return { code: codigo, name: name || '(sin nombre)', qty: parseInt(cant, 10) || 1 };
+}
+
+async function extractItemsFromPdf(file){
+  const lines = await extractPdfLines(file);
+  const items = [];
+  let lastItem = null;
+
+  lines.forEach(line => {
+    if(SKIP_LINE_PATTERN.test(line)){
+      lastItem = null;
+      return;
+    }
+
+    const parsed = parseLineToItem(line);
+    if(parsed){
+      const item = { code: parsed.code, name: parsed.name, qty: parsed.qty, picked: 0 };
+      items.push(item);
+      lastItem = item;
+      return;
+    }
+
+    // Línea que no calzó como producto: puede ser el resto de un código
+    // que se cortó en dos líneas dentro de su columna (ej: "A06-29OD-" + "F04"),
+    // o la continuación de una descripción larga.
+    if(!lastItem) return;
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if(tokens.length === 0) return;
+
+    const looksLikeCodeFragment = tokens.length <= 2
+      && tokens.every(t => /^[A-Z0-9.\-_]{1,12}$/i.test(t))
+      && tokens.some(t => /\d/.test(t));
+
+    if(looksLikeCodeFragment && /[\-._]$/.test(lastItem.code)){
+      lastItem.code = lastItem.code + tokens.join('');
+    } else {
+      lastItem.name = (lastItem.name + ' ' + line).trim();
+    }
+  });
+
+  return items;
+}
+
+const COTIZACION_PROMPT = 'Este archivo (puede ser un PDF o una foto) es una cotizacion de productos de repuestos y accesorios para motos. Lee la tabla y devuelve EXCLUSIVAMENTE un arreglo JSON valido, sin texto adicional, sin explicaciones, sin marcadores de markdown. Formato exacto: [{"code":"CODIGO","name":"NOMBRE BREVE (maximo 6 palabras)","qty":NUMERO}]. Usa el codigo de la columna CODIGO o COD, el nombre de la columna ARTICULO o PRODUCTO, y la cantidad de la columna CANT o CANTIDAD. Si una fila no tiene cantidad visible, usa 1. No omitas ninguna fila de producto.';
+
+async function processCotizacionPhoto(file){
+  const status = document.getElementById('photo-status');
+
+  const isPdf = file.type === 'application/pdf'
+    || file.type === 'application/x-pdf'
+    || /\.pdf$/i.test(file.name || '');
+
+  if(isPdf){
+    status.textContent = 'Leyendo el PDF...';
+    try{
+      const items = await extractItemsFromPdf(file);
+      if(items.length === 0){
+        status.textContent = 'No se pudieron identificar productos en este PDF automáticamente. Agrégalos manualmente abajo.';
+        return;
+      }
+      items.forEach(it => pickItems.push(it));
+      renderBuildList();
+      status.textContent = 'Se agregaron ' + items.length + ' línea(s) desde el PDF. Revisa los códigos antes de continuar, sobre todo los que se parecen entre sí.';
+    }catch(err){
+      status.textContent = 'No se pudo leer este PDF (' + err.message + '). Agrega los productos manualmente abajo.';
+    }
+    return;
+  }
+
+  status.textContent = 'Preparando la foto...';
+  try{
+    let imageBlob = file;
+    let mediaType = file.type || 'image/jpeg';
+    try{
+      imageBlob = await resizeImage(file, 1568, 0.82);
+      mediaType = 'image/jpeg';
+    }catch(resizeErr){
+      imageBlob = file;
+      mediaType = file.type || 'image/jpeg';
+    }
+    const base64 = await fileToBase64(imageBlob);
+    status.textContent = 'Leyendo la cotización con IA...';
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type:'image', source:{ type:'base64', media_type: mediaType, data: base64 } },
+            { type:'text', text: COTIZACION_PROMPT }
+          ]
+        }]
+      })
+    });
+    if(!response.ok){
+      let detail = 'HTTP ' + response.status;
+      try{
+        const errJson = await response.json();
+        detail = (errJson && errJson.error && errJson.error.message) ? errJson.error.message : JSON.stringify(errJson);
+      }catch(parseErr){}
+      throw new Error(detail);
+    }
+    const data = await response.json();
+    let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    text = text.replace(/```json|```/g, '').trim();
+    const start = text.indexOf('[');
+    const end = text.lastIndexOf(']');
+    if(start !== -1 && end !== -1) text = text.slice(start, end + 1);
+    const parsed = JSON.parse(text);
+    parsed.forEach(p => {
+      pickItems.push({
+        code: (p.code || '').toString().trim(),
+        name: (p.name || '').toString().trim(),
+        qty: Number(p.qty) || 1,
+        picked: 0
+      });
+    });
+    renderBuildList();
+    status.textContent = 'Se agregaron ' + parsed.length + ' línea(s). Revisa cada código antes de continuar, sobre todo los que se parecen entre sí.';
+  }catch(err){
+    status.textContent = 'No se pudo leer esta foto automáticamente (' + err.message + '). La lectura de fotos por IA solo funciona dentro de Claude.ai — sube el PDF en su lugar para que funcione en cualquier lugar. También puedes agregar los productos manualmente abajo.';
+  }
+}
+
+document.getElementById('photo-trigger-btn').addEventListener('click', function(){
+  document.getElementById('photo-input').click();
+});
+
+document.getElementById('photo-input').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(file) processCotizacionPhoto(file);
+  e.target.value = '';
+});
+
+document.getElementById('btn-start-verification').addEventListener('click', function(){
+  const buildStatus = document.getElementById('build-status');
+  if(pickItems.length === 0){
+    buildStatus.textContent = 'Agrega al menos un producto antes de iniciar la verificación.';
+    return;
+  }
+  buildStatus.textContent = '';
+  showScreen('pick');
+  renderPickRows();
+  updateStats();
+  document.getElementById('scan-input').focus();
+});
+
+function rowStyle(item){
+  if(item.picked > item.qty) return { border:'var(--danger-border)', bg:'var(--danger-bg)', count:'var(--danger-text)' };
+  if(item.picked === item.qty) return { border:'var(--success-border)', bg:'var(--success-bg)', count:'var(--success-text)' };
+  if(item.picked > 0) return { border:'var(--warning-border)', bg:'var(--warning-bg)', count:'var(--text)' };
+  return { border:'var(--border)', bg:'var(--card)', count:'var(--text-secondary)' };
+}
+
+function renderPickRows(){
+  const html = pickItems.map(item => {
+    const s = rowStyle(item);
+    return '<div class="pick-row" style="border-color:'+s.border+'; background:'+s.bg+';">'
+      + '<div class="left"><div class="code">'+escapeAttr(item.code)+'</div><div class="name" title="'+escapeAttr(item.name)+'">'+escapeAttr(item.name || '(sin nombre)')+'</div></div>'
+      + '<div class="right">'
+        + '<span class="count" style="color:'+s.count+';">'+item.picked+'/'+item.qty+'</span>'
+        + '<button type="button" class="minus-btn" data-code="'+escapeAttr(item.code)+'" aria-label="Quitar uno">−</button>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+  document.getElementById('pick-rows').innerHTML = html;
+}
+
+document.getElementById('pick-rows').addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-code]');
+  if(!btn) return;
+  const item = pickItems.find(i => i.code === btn.getAttribute('data-code'));
+  if(item && item.picked > 0){
+    item.picked -= 1;
+    renderPickRows();
+    updateStats();
+  }
+});
+
+function updateStats(){
+  const total = pickItems.length;
+  const complete = pickItems.filter(i => i.picked === i.qty).length;
+  const pending = pickItems.filter(i => i.picked < i.qty).length;
+  const excess = pickItems.filter(i => i.picked > i.qty).length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-complete').textContent = complete;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-excess').textContent = excess;
+
+  const banner = document.getElementById('banner');
+  if(excess > 0){
+    banner.style.display = 'block';
+    banner.style.background = 'var(--danger-bg)';
+    banner.style.color = 'var(--danger-text)';
+    banner.textContent = 'Hay productos con cantidad de más. Revisa esas líneas antes de cerrar el pedido.';
+  } else if(pending === 0 && total > 0){
+    banner.style.display = 'block';
+    banner.style.background = 'var(--success-bg)';
+    banner.style.color = 'var(--success-text)';
+    banner.textContent = 'Pedido completo y verificado. Listo para despacho.';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function setFeedback(text, color){
+  const fb = document.getElementById('feedback-text');
+  fb.textContent = text;
+  fb.style.color = color;
+  document.getElementById('feedback-action').innerHTML = '';
+}
+
+function showUnknownCodeUI(code){
+  const fb = document.getElementById('feedback-text');
+  fb.textContent = 'Código no encontrado en este pedido: "' + code + '".';
+  fb.style.color = 'var(--danger-text)';
+
+  const pending = pickItems.filter(i => i.picked < i.qty);
+  let html = '';
+
+  if(pending.length > 0){
+    const optionsHtml = pending.map(i =>
+      '<option value="' + escapeAttr(i.code) + '">' + escapeAttr(i.code) + ' - ' + escapeAttr(i.name) + '</option>'
+    ).join('');
+    html += '<div style="margin-top:8px;">'
+      + '<label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:4px;">¿Es el código de barras de un producto de este pedido?</label>'
+      + '<select id="link-barcode-select" style="margin-bottom:6px;">' + optionsHtml + '</select>'
+      + '<button type="button" data-action="link-barcode" data-code="' + escapeAttr(code) + '">Vincular y marcar como recibido</button>'
+      + '</div>';
+  }
+
+  html += '<button type="button" data-action="add-unknown" data-code="' + escapeAttr(code) + '" style="margin-top:8px;">Agregar "' + escapeAttr(code) + '" como producto nuevo</button>';
+
+  document.getElementById('feedback-action').innerHTML = html;
+}
+
+function handleScan(raw){
+  const rawCode = (raw || '').trim();
+  if(!rawCode) return;
+
+  const mappedCode = barcodeCatalog[rawCode];
+  const lookupCode = mappedCode || rawCode;
+  const item = pickItems.find(i => i.code.toLowerCase() === lookupCode.toLowerCase());
+
+  if(!item){
+    if(mappedCode){
+      const fb = document.getElementById('feedback-text');
+      fb.textContent = 'El código de barras "' + rawCode + '" está vinculado a "' + mappedCode + '", pero ese producto no está en este pedido.';
+      fb.style.color = 'var(--danger-text)';
+      document.getElementById('feedback-action').innerHTML = '';
+      return;
+    }
+    showUnknownCodeUI(rawCode);
+    return;
+  }
+
+  item.picked += 1;
+  if(item.picked > item.qty){
+    setFeedback('Exceso: ' + item.name + ' ya tenía ' + item.qty + ' pedidas, ahora van ' + item.picked + '.', 'var(--danger-text)');
+  } else if(item.picked === item.qty){
+    setFeedback('Completo: ' + item.name + ' (' + item.picked + '/' + item.qty + ').', 'var(--success-text)');
+  } else {
+    setFeedback('Agregado: ' + item.name + ' (' + item.picked + '/' + item.qty + ').', 'var(--text-secondary)');
+  }
+  renderPickRows();
+  updateStats();
+}
+
+document.getElementById('feedback-action').addEventListener('click', function(e){
+  const linkBtn = e.target.closest('button[data-action="link-barcode"]');
+  if(linkBtn){
+    const barcode = linkBtn.getAttribute('data-code');
+    const select = document.getElementById('link-barcode-select');
+    const targetCode = select ? select.value : null;
+    if(!targetCode) return;
+    barcodeCatalog[barcode] = targetCode;
+    saveBarcodeCatalog();
+    renderCatalogStatus();
+    const item = pickItems.find(i => i.code === targetCode);
+    if(item){
+      item.picked += 1;
+      renderPickRows();
+      updateStats();
+      setFeedback('Vinculado: "' + barcode + '" = ' + targetCode + '. ' + item.name + ' (' + item.picked + '/' + item.qty + '). La próxima vez que escanees este código, ya lo va a reconocer solo.', 'var(--success-text)');
+    }
+    return;
+  }
+  const addBtn = e.target.closest('button[data-action="add-unknown"]');
+  if(!addBtn) return;
+  const code = addBtn.getAttribute('data-code');
+  pickItems.push({ code: code, name: '(agregado durante verificación)', qty: 1, picked: 1 });
+  renderPickRows();
+  updateStats();
+  setFeedback('Agregado como producto nuevo: ' + code + ' (1/1). Puedes editar su nombre desde "Editar pedido".', 'var(--success-text)');
+});
+
+document.getElementById('scan-form').addEventListener('submit', function(e){
+  e.preventDefault();
+  const input = document.getElementById('scan-input');
+  handleScan(input.value);
+  input.value = '';
+  input.focus();
+});
+
+async function toggleCamera(){
+  const camStatus = document.getElementById('camera-status');
+  camStatus.textContent = '';
+  if(cameraActive){ await stopCamera(); return; }
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    camStatus.textContent = 'Este visor no permite acceder a la cámara aquí. Abre el archivo en una pestaña normal de Chrome (botón de compartir/abrir en navegador) o sigue escribiendo los códigos a mano.';
+    return;
+  }
+  if(typeof Html5Qrcode === 'undefined'){
+    camStatus.textContent = 'No se pudo cargar el lector de cámara (falló la conexión a la librería). Recarga la página o escribe los códigos manualmente.';
+    return;
+  }
+
+  try{
+    html5QrCode = new Html5Qrcode('camera-preview', {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ]
+    });
+    document.getElementById('camera-preview').style.display = 'block';
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 150 } },
+      function(decodedText){
+        if(scanLocked) return;
+        scanLocked = true;
+        handleScan(decodedText);
+        if(navigator.vibrate) navigator.vibrate(80);
+        setTimeout(function(){ scanLocked = false; }, 1200);
+      },
+      function(){}
+    );
+    cameraActive = true;
+    document.getElementById('camera-toggle-btn').textContent = 'Detener cámara';
+  }catch(err){
+    document.getElementById('camera-preview').style.display = 'none';
+    cameraActive = false;
+    document.getElementById('camera-toggle-btn').textContent = 'Escanear con cámara';
+    const msg = (err && err.message) ? err.message : String(err);
+    camStatus.textContent = 'No se pudo activar la cámara: ' + msg + '. Puedes seguir escribiendo los códigos manualmente.';
+  }
+}
+
+async function stopCamera(){
+  if(html5QrCode){
+    try{ await html5QrCode.stop(); await html5QrCode.clear(); }catch(e){}
+  }
+  cameraActive = false;
+  document.getElementById('camera-toggle-btn').textContent = 'Escanear con cámara';
+  document.getElementById('camera-preview').style.display = 'none';
+}
+
+document.getElementById('camera-toggle-btn').addEventListener('click', toggleCamera);
+
+document.getElementById('btn-back-to-build').addEventListener('click', async function(){
+  await stopCamera();
+  showScreen('build');
+  renderBuildList();
+});
+
+document.getElementById('btn-new-order').addEventListener('click', async function(){
+  await stopCamera();
+  pickItems = [];
+  document.getElementById('order-ref').value = '';
+  document.getElementById('photo-status').textContent = '';
+  showScreen('build');
+  renderBuildList();
+});
+
+function buildSummaryText(){
+  const ref = document.getElementById('order-ref').value.trim();
+  const total = pickItems.length;
+  const complete = pickItems.filter(i => i.picked === i.qty).length;
+  const pending = pickItems.filter(i => i.picked < i.qty);
+  const excess = pickItems.filter(i => i.picked > i.qty);
+  const lines = [];
+  lines.push('Verificación de pedido' + (ref ? ' - ' + ref : ''));
+  lines.push(complete + '/' + total + ' líneas completas.');
+  if(pending.length){
+    lines.push('Pendientes:');
+    pending.forEach(i => lines.push('- ' + i.code + ' ' + i.name + ': ' + i.picked + '/' + i.qty));
+  }
+  if(excess.length){
+    lines.push('Con exceso:');
+    excess.forEach(i => lines.push('- ' + i.code + ' ' + i.name + ': ' + i.picked + '/' + i.qty));
+  }
+  if(!pending.length && !excess.length) lines.push('Sin discrepancias. Listo para despacho.');
+  return lines.join('\n');
+}
+
+document.getElementById('btn-copy-summary').addEventListener('click', function(){
+  const text = buildSummaryText();
+  const status = document.getElementById('summary-status');
+  const fallback = document.getElementById('summary-fallback');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(
+      () => { status.textContent = 'Resumen copiado. Puedes pegarlo en WhatsApp.'; fallback.classList.add('hidden'); },
+      () => { status.textContent = 'No se pudo copiar automáticamente. Selecciona el texto de abajo y cópialo:'; fallback.value = text; fallback.classList.remove('hidden'); fallback.select(); }
+    );
+  } else {
+    status.textContent = 'No se pudo copiar automáticamente. Selecciona el texto de abajo y cópialo:';
+    fallback.value = text;
+    fallback.classList.remove('hidden');
+    fallback.select();
+  }
+});
+
+function renderCatalogStatus(){
+  const el = document.getElementById('catalog-status');
+  const count = Object.keys(barcodeCatalog).length;
+  if(count === 0){
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = count + ' código(s) de barra vinculados guardados. <button type="button" id="clear-catalog-btn" style="font-size:12px; padding:3px 8px;">Borrar</button>';
+}
+
+document.getElementById('catalog-status').addEventListener('click', function(e){
+  const btn = e.target.closest('#clear-catalog-btn');
+  if(!btn) return;
+  barcodeCatalog = {};
+  saveBarcodeCatalog();
+  renderCatalogStatus();
+});
+
+renderCatalogStatus();
+renderBuildList();
+</script>
+
+</body>
+</html>
